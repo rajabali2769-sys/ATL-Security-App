@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safeguarding training · Crystal FM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<style>
+[hidden]{display:none!important}
+:root{--bg:#F3F5F9;--panel:#fff;--border:#DCE2EA;--text:#0F172A;--muted:#475569;--acc:#1D5FD1;--ok:#059669;--bad:#BE123C}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 'Geist',system-ui,sans-serif}
+h1,h2{font-family:'Geist',sans-serif;margin:0;letter-spacing:-.01em}h1{font-size:28px}h2{font-size:20px}
+.wrap.wide{max-width:1120px}
+.wrap{max-width:820px;margin:0 auto;padding:28px 18px 60px;display:flex;flex-direction:column;gap:18px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.muted{color:var(--muted)}
+.btn{min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:#fff;font:600 16px inherit;cursor:pointer}
+.btn.pri{background:var(--acc);color:#fff;border-color:transparent}.btn:disabled{opacity:.45;cursor:not-allowed}
+.steps{display:flex;gap:6px}.steps span{flex:1;height:8px;border-radius:99px;background:var(--border)}.steps span.on{background:var(--acc)}
+.video{position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000}.video>div,.video iframe{position:absolute;inset:0;width:100%;height:100%}
+.mod{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#fff;cursor:pointer;font:inherit;text-align:left;width:100%}
+.mod.done{border-color:var(--ok)}.mod:disabled{opacity:.5;cursor:not-allowed}.mod b{font-weight:600}
+fieldset{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:0}legend{font-weight:600;padding:0 6px}
+label.opt{display:flex;gap:10px;align-items:flex-start;padding:8px 4px;cursor:pointer}label.opt input{margin-top:5px;width:18px;height:18px}
+.err{color:var(--bad)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input.tx{width:100%;min-height:50px;border:1px solid var(--border);border-radius:12px;padding:0 14px;font:inherit;background:#fff}
+input.tx:focus{outline:2px solid var(--acc);outline-offset:1px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700}
+/* ---------- certificate (A4 landscape) ---------- */
+.certwrap{display:flex;justify-content:center}
+.certificate{position:relative;width:100%;max-width:1060px;aspect-ratio:297/210;background:#fff;color:#14213D;font-family:'Geist',sans-serif;box-shadow:0 20px 50px -18px rgba(15,23,42,.35);overflow:hidden}
+.certificate .frame{position:absolute;inset:14px;border:2px solid #0B2A5B}
+.certificate .frame2{position:absolute;inset:22px;border:1px solid #C9A646}
+.certificate .corner{position:absolute;width:70px;height:70px;border-color:#C9A646;border-style:solid}
+.certificate .c1{top:30px;left:30px;border-width:3px 0 0 3px}.certificate .c2{top:30px;right:30px;border-width:3px 3px 0 0}.certificate .c3{bottom:30px;left:30px;border-width:0 0 3px 3px}.certificate .c4{bottom:30px;right:30px;border-width:0 3px 3px 0}
+.certificate .band{position:absolute;left:0;right:0;top:0;height:9px;background:linear-gradient(90deg,#0B2A5B,#1D5FD1 55%,#1E9E5A)}
+.certificate .wm{position:absolute;inset:0;display:grid;place-items:center;opacity:.045;pointer-events:none}
+.certificate .inner{position:absolute;inset:44px 70px 17% 70px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.certificate .org{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:clamp(9px,1.25vw,13px);color:#0B2A5B}
+.certificate .title{font-family:'Playfair Display',serif;font-weight:700;font-size:clamp(22px,4.4vw,48px);color:#0B2A5B;margin-top:clamp(6px,1.6vw,18px);line-height:1.05}
+.certificate .sub{letter-spacing:.32em;text-transform:uppercase;font-size:clamp(8px,1vw,11px);color:#8A6D1E;margin-top:4px}
+.certificate .pre{margin-top:clamp(8px,2vw,22px);font-size:clamp(10px,1.3vw,14px);color:#475569}
+.certificate .name{font-family:'Playfair Display',serif;font-style:italic;font-weight:600;font-size:clamp(24px,5vw,56px);color:#14213D;line-height:1.15;padding:0 20px 4px;border-bottom:1.5px solid #C9A646;margin-top:2px}
+.certificate .what{margin-top:clamp(6px,1.5vw,16px);font-size:clamp(10px,1.35vw,15px);color:#334155;max-width:78%;line-height:1.5}
+.certificate .what b{color:#0B2A5B}
+.certificate .row3{margin-top:auto;width:92%;display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:18px}
+.certificate .sig{text-align:center;font-size:clamp(8px,1vw,12px);color:#475569}
+.certificate .sig .line{border-top:1px solid #94A3B8;margin:0 auto 4px;width:80%}
+.certificate .sig .hand{font-family:'Playfair Display',serif;font-style:italic;font-size:clamp(12px,1.7vw,20px);color:#0B2A5B}
+.certificate .seal{width:clamp(70px,10vw,112px);height:clamp(70px,10vw,112px)}
+.certificate .meta{position:absolute;left:56px;right:56px;bottom:34px;display:flex;justify-content:space-between;align-items:flex-end;font-size:clamp(7px,.85vw,10px);color:#64748B}
+.certificate .ref{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#0B2A5B;font-size:clamp(8px,1vw,12px);letter-spacing:.04em}
+.certificate .qr{width:clamp(44px,6.2vw,74px);height:clamp(44px,6.2vw,74px)}.certificate .qr img,.certificate .qr canvas{width:100%!important;height:100%!important}
+.verify{border-left:5px solid var(--ok)}.verify.bad{border-left-color:var(--bad)}
+@page{size:A4 landscape;margin:0}
+@media print{body{background:#fff}.noprint{display:none!important}.wrap,.wrap.wide{padding:0;max-width:none}.certificate{box-shadow:none;width:297mm;height:210mm;max-width:none;aspect-ratio:auto}
+  .certificate .title{font-size:44px}.certificate .name{font-size:52px}.certificate .what{font-size:15px}.certificate .org{font-size:12px}.certificate .sub{font-size:11px}.certificate .pre{font-size:14px}.certificate .sig{font-size:11px}.certificate .sig .hand{font-size:21px}.certificate .seal{width:104px;height:104px}.certificate .meta{font-size:10px}.certificate .ref{font-size:12px}.certificate .qr{width:70px;height:70px}}
+</style>
+</head>
+<body>
+<main class="wrap" id="app"><p class="muted">Loading your training…</p></main>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+const C = window.PORTAL_CONFIG, Q = new URLSearchParams(location.search); let token = Q.get('t');
+const app = document.getElementById('app');
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let D, player, current = 0;
+async function api(body) {
+  const r = await fetch(C.SUPABASE_URL + '/functions/v1/training', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: C.SUPABASE_ANON_KEY }, body: JSON.stringify({ token, ...body }) });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Something went wrong'); return j;
+}
+const ytId = (u) => (String(u).match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/) || [, String(u).length === 11 ? u : ''])[1];
+const LOGO = `<svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1D5FD1"/><stop offset="1" stop-color="#1E9E5A"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#lg)"/><path d="M16 6l8 4.6v9.2L16 26l-8-6.2v-9.2z" fill="none" stroke="#fff" stroke-width="2"/><circle cx="16" cy="16" r="3.2" fill="#fff"/></svg>`;
+async function register() {
+  const code = Q.get('join'); let F;
+  try { F = await api({ action: 'open_form', code }); } catch (e) { app.innerHTML = `<div class="card"><div class="brand">${LOGO} Crystal Facilities Management</div><h1>Link not active</h1><p class="err">${esc(e.message)}</p></div>`; return; }
+  const TYPE = { email: 'email', phone: 'tel' }, AUTO = { email: 'email', phone: 'tel' }, PH = { email: 'you@example.com', phone: '07…', site: 'Where you work', role: 'e.g. Cleaning Operative', payroll: 'If you know it' };
+  app.innerHTML = `<header class="card"><div class="brand">${LOGO} Crystal Facilities Management</div><h1>Safeguarding training</h1>
+    <p class="muted" style="margin:0">5 short videos and a quiz, about 35 minutes. You can do it on your phone and get your certificate straight away.</p></header>
+    <form class="card" id="rf"><h2>Your details</h2><label>Full name<input class="tx" name="person" autocomplete="name" required placeholder="First and last name"></label>
+    ${F.fields.map((f) => `<label>${esc(f.label)}${f.required ? '' : ' <span class="muted">(optional)</span>'}<input class="tx" name="${f.key}" type="${TYPE[f.key] || 'text'}" ${AUTO[f.key] ? `autocomplete="${AUTO[f.key]}"` : ''} ${f.required ? 'required' : ''} placeholder="${PH[f.key] || ''}"></label>`).join('')}
+    <p class="muted" style="margin:0;font-size:14px">Your name will be printed on your certificate exactly as you type it. Crystal FM uses these details only to record your training.</p>
+    <p class="err" id="re" role="alert"></p><button class="btn pri">Start training</button></form>`;
+  document.getElementById('rf').onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); const b = e.target.querySelector('button'); b.disabled = true;
+    try { const r = await api({ action: 'register', code, ...f }); token = r.token; try { localStorage.setItem('cfm_sg_token', token); } catch (_) {} history.replaceState(null, '', location.pathname + '?t=' + token); start(); }
+    catch (er) { document.getElementById('re').textContent = er.message; b.disabled = false; } };
+}
+async function verifyPage() {
+  const ref = Q.get('verify'); let r; try { r = await api({ action: 'verify', ref }); } catch (e) { r = { valid: false }; }
+  const d = (x) => x ? new Date(x).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+  app.innerHTML = r.valid ? `<div class="card verify"><div class="brand">${LOGO} Crystal Facilities Management</div><h1>✅ Certificate is genuine</h1><p style="margin:0"><b>${esc(r.person)}</b> completed <b>${esc(noCats(r.title))}</b> with ${r.score}%.</p><p class="muted" style="margin:0">Reference ${esc(r.ref)} · Completed ${d(r.completed_at)} · ${r.current ? 'Valid until ' + d(r.refresher_due) : '<span class="err">Refresher overdue since ' + d(r.refresher_due) + '</span>'}</p></div>`
+    : `<div class="card verify bad"><div class="brand">${LOGO} Crystal Facilities Management</div><h1>Certificate not found</h1><p class="muted" style="margin:0">We couldn't find a certificate with reference ${esc(ref || '')}. Check it was typed exactly, or contact Crystal FM.</p></div>`;
+}
+const noCats = (t) => String(t || '').replace(/\bCATS\b\s*/gi, '').replace(/\s{2,}/g, ' ').trim();
+async function start() {
+  if (Q.get('verify')) return verifyPage();
+  if (!token && Q.get('join')) { let saved = null; try { saved = localStorage.getItem('cfm_sg_token'); } catch (_) {} if (saved) { token = saved; history.replaceState(null, '', location.pathname + '?t=' + token); } else return register(); }
+  if (!token) { app.innerHTML = '<div class="card"><h1>Link missing</h1><p class="muted">Please open the training link Crystal FM sent you.</p></div>'; return; }
+  try { D = await api({ action: 'get' }); D.title = noCats(D.title); } catch (e) { app.innerHTML = `<div class="card"><h1>Can't open training</h1><p class="err">${esc(e.message)}</p></div>`; return; }
+  if (D.result?.passed) return certificate(D.result.score, D.result.completed_at, D.result.refresher_due, D.cert_ref);
+  if (D.expired) { app.innerHTML = '<div class="card"><h1>Link expired</h1><p class="muted">Ask the Crystal FM Recruitment team to send you a new link.</p></div>'; return; }
+  current = Math.min(D.watched, D.videos.length - 1);
+  D.watched >= D.videos.length ? quiz() : videos();
+}
+function videos() {
+  const n = D.videos.length;
+  app.innerHTML = `<header class="card"><div class="muted">Crystal FM · ${esc(D.title)}</div><h1>Hi ${esc(D.person)}, welcome to your safeguarding training</h1>
+    <p class="muted" style="margin:0">Watch all ${n} short modules in order. The quiz unlocks after the last one. You need ${D.pass_mark}% to pass.</p>
+    <div class="steps" aria-label="${D.watched} of ${n} modules watched">${D.videos.map((_, i) => `<span class="${i < D.watched ? 'on' : ''}"></span>`).join('')}</div></header>
+    <section class="card"><h2 id="vt">${esc(D.videos[current].title)}</h2><div class="video"><div id="player"></div></div>
+    <p class="muted" id="vh" style="margin:0">The next module unlocks when this video finishes.</p></section>
+    <section class="card" aria-label="Modules">${D.videos.map((v, i) => `<button class="mod ${i < D.watched ? 'done' : ''}" data-m="${i}" ${i > D.watched ? 'disabled' : ''}><b>${esc(v.title)}</b><span>${i < D.watched ? 'Watched' : i === D.watched ? 'Up next' : 'Locked'}</span></button>`).join('')}
+    ${D.watched >= n ? '<button class="btn pri" id="toQuiz">Start the quiz</button>' : ''}</section>`;
+  document.querySelectorAll('[data-m]').forEach((b) => (b.onclick = () => { current = +b.dataset.m; videos(); }));
+  const tq = document.getElementById('toQuiz'); if (tq) tq.onclick = quiz;
+  const id = ytId(D.videos[current].youtube);
+  if (!id) { document.getElementById('vh').innerHTML = '<span class="err">This video has not been added yet. Please tell Recruitment.</span>'; return; }
+  const make = () => { player = new YT.Player('player', { videoId: id, playerVars: { rel: 0, modestbranding: 1 }, events: { onStateChange: async (e) => {
+    if (e.data === YT.PlayerState.ENDED) { try { const r = await api({ action: 'watched', module: current }); D.watched = r.watched; if (current < n - 1 && current + 1 <= D.watched) current++; videos(); } catch (er) { alert(er.message); } } } } }); };
+  window.YT && YT.Player ? make() : (window.onYouTubeIframeAPIReady = make);
+}
+function quiz() {
+  app.innerHTML = `<header class="card"><h1>Safeguarding quiz</h1><p class="muted" style="margin:0">${D.questions.length} questions. Pass mark ${D.pass_mark}%.</p></header>
+    <form class="card" id="qf">${D.questions.map((q, i) => `<fieldset><legend>${i + 1}. ${esc(q.q)}</legend>${q.options.map((o, j) => `<label class="opt"><input type="radio" name="q${i}" value="${j}" required> <span>${esc(o)}</span></label>`).join('')}</fieldset>`).join('')}
+    <p class="err" id="qe" role="alert"></p><button class="btn pri">Submit answers</button></form>`;
+  document.getElementById('qf').onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(e.target), answers = D.questions.map((_, i) => +f.get('q' + i));
+    e.target.querySelector('button').disabled = true;
+    try { const r = await api({ action: 'submit', answers });
+      if (r.passed) { const d = new Date(); d.setFullYear(d.getFullYear() + 1); certificate(r.score, new Date().toISOString(), d.toISOString().slice(0, 10), r.cert_ref); }
+      else { app.innerHTML = `<div class="card"><h1>Not quite. You scored ${r.score}%</h1><p class="muted">You got ${r.right} of ${r.total} right. You need ${r.pass_mark}%. Have another go.</p><button class="btn pri" id="again">Try the quiz again</button></div>`;
+        document.getElementById('again').onclick = async () => { await api({ action: 'retry' }); quiz(); }; }
+    } catch (er) { document.getElementById('qe').textContent = er.message; e.target.querySelector('button').disabled = false; }
+  };
+}
+function certificate(score, when, due, ref) {
+  const d = (x) => new Date(x).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const verifyUrl = location.origin + location.pathname + '?verify=' + encodeURIComponent(ref || '');
+  const seal = `<svg class="seal" viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="gd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7C96B"/><stop offset=".5" stop-color="#C9A646"/><stop offset="1" stop-color="#9C7A22"/></linearGradient><path id="cp" d="M60,60 m-41,0 a41,41 0 1,1 82,0 a41,41 0 1,1 -82,0"/></defs>
+    ${Array.from({ length: 24 }, (_, i) => `<path d="M60 2 L64 14 L56 14 Z" fill="url(#gd)" transform="rotate(${i * 15} 60 60)"/>`).join('')}<circle cx="60" cy="60" r="50" fill="url(#gd)"/><circle cx="60" cy="60" r="45" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.2"/><circle cx="60" cy="60" r="33" fill="#0B2A5B"/>
+    <text font-family="Geist,sans-serif" font-size="8.6" font-weight="700" fill="#0B2A5B" letter-spacing="2.2"><textPath href="#cp" startOffset="50%" text-anchor="middle">CRYSTAL FM · SAFEGUARDING · CERTIFIED ·</textPath></text>
+    <path d="M47 61 l9 9 l18 -19" fill="none" stroke="#E7C96B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  app.classList.add('wide');
+  app.innerHTML = `<div class="certwrap"><section class="certificate" aria-label="Certificate of completion">
+      <div class="band"></div><div class="frame"></div><div class="frame2"></div><div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
+      <div class="wm"><svg width="60%" viewBox="0 0 32 32"><path d="M16 4l10 5.8v11.6L16 28 6 21.4V9.8z" fill="none" stroke="#0B2A5B" stroke-width="1.2"/><circle cx="16" cy="16" r="4" fill="#0B2A5B"/></svg></div>
+      <div class="inner">
+        <div class="org">${LOGO} Crystal Facilities Management</div>
+        <div class="title">Certificate of Completion</div><div class="sub">Safeguarding training</div>
+        <div class="pre">This is to certify that</div>
+        <div class="name">${esc(D.person)}</div>
+        <div class="what">has successfully completed <b>${esc(D.title)}</b>, including all training modules and the assessment, achieving a score of <b>${score}%</b> on ${d(when)}.</div>
+        <div class="row3"><div class="sig"><div class="hand">Nancy Dowden</div><div class="line"></div>Training and Development Manager<br>Crystal Facilities Management</div>${seal}<div class="sig"><div class="hand">${d(when)}</div><div class="line"></div>Date of completion<br>Refresher due ${due ? d(due) : '—'}</div></div>
+      </div>
+      <div class="meta"><div>Certificate reference<br><span class="ref">${esc(ref || 'Pending')}</span></div><div style="text-align:center;max-width:46%">Verify this certificate at ${esc(location.host)}/training.html?verify=${esc(ref || '')}</div><div class="qr" id="qr" title="Scan to verify"></div></div>
+    </section></div>
+    <div class="noprint" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="btn pri" onclick="print()">Download PDF / print</button></div>
+    <p class="muted noprint" style="text-align:center">Well done${D.person ? ', ' + esc(D.person.split(' ')[0]) : ''}! Crystal FM can see your result. Choose "Save as PDF" in the print window to keep a copy.</p>`;
+  try { if (window.QRCode && ref) new QRCode(document.getElementById('qr'), { text: verifyUrl, width: 148, height: 148, colorDark: '#0B2A5B', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (_) {}
+}
+start();
+</script>
+</body>
+</html>
