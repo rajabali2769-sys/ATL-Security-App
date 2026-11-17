@@ -43,7 +43,7 @@ async function boot() {
   const { data: prof } = await sb.from('sw_profiles').select('*').eq('id', S.user.id).maybeSingle();
   if (!prof || !prof.active) { await sb.auth.signOut(); return login('This login has no SecureWatch access. Ask your supervisor.'); }
   S.prof = prof;
-  if (S.user.user_metadata?.sw_must_change) return setPassword();
+  if (!S.user.user_metadata?.pw_set) return setPassword();
   try { const st = await list('settings'); if (st[0]) S.settings = { ...S.settings, ...st[0] }; } catch (_) {}
   if (prof.role === 'guard') return guardHome();
   if (prof.role === 'fm') return fmHome();
@@ -61,7 +61,7 @@ function setPassword() {
   $('#app').innerHTML = `<div class="center"><form class="card login" id="pf"><h1>Choose your password</h1><p class="muted">At least 10 characters. You'll use it every time you sign in.</p>
     <label class="f">New password<input name="p1" type="password" minlength="10" autocomplete="new-password" required></label><label class="f">Type it again<input name="p2" type="password" minlength="10" required></label><p class="err" id="pm"></p><button class="btn pri big">Save</button></form></div>`;
   $('#pf').onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); if (f.p1 !== f.p2) return ($('#pm').textContent = 'The two passwords are different.');
-    const { error } = await sb.auth.updateUser({ password: f.p1, data: { pw_set: true, sw_must_change: false } }); if (error) return ($('#pm').textContent = error.message); toast('Password saved.'); boot(); };
+    const { error } = await sb.auth.updateUser({ password: f.p1, data: { pw_set: true } }); if (error) return ($('#pm').textContent = error.message); toast('Password saved.'); boot(); };
 }
 const topbar = (sub) => `<header class="bar"><div class="brand">${LOGO}<div>SecureWatch<small>${esc(sub)}</small></div></div><div class="sp"></div><button class="btn sm" id="out">Sign out</button></header>`;
 const bindOut = () => ($('#out').onclick = async () => { clearTimers(); await sb.auth.signOut(); login(); });
@@ -135,8 +135,8 @@ async function patrol(sh, site) {
     $('#fin').onclick = finish; $('#can').onclick = async () => { if (!confirm('Cancel this patrol?')) return; await stopCam(); await put('patrols', { ...p, status: 'Cancelled', endAt: now() }); guardHome(); };
   };
   const hit = async (raw) => {
-    const code = String(raw || '').trim().replace(/^SW:/i, ''); if (!code) return;
-    const c = cps.find((x) => x.id === code || String(x.code).toUpperCase() === code.toUpperCase());
+    const norm = (v) => String(v || '').trim().replace(/^SW:/i, '').toUpperCase(); const code = norm(raw); if (!code) return;
+    const c = cps.find((x) => norm(x.id) === code || norm(x.code) === code);
     if (!c) return toast('That code is not a checkpoint on this site.', true);
     if (done.has(c.id)) return toast(`${c.name} already scanned.`);
     done.add(c.id); if (navigator.vibrate) navigator.vibrate(120);
@@ -155,8 +155,9 @@ async function patrol(sh, site) {
     const missed = cps.filter((c) => !done.has(c.id)).map((c) => c.id);
     let explanation = '';
     if (missed.length) { explanation = prompt(`${missed.length} checkpoint(s) not scanned:\n${cps.filter((c) => missed.includes(c.id)).map((c) => '• ' + c.name).join('\n')}\n\nWhy? (required)`) || ''; if (!explanation.trim()) return toast('Please explain the missed checkpoints.', true); }
+    const notes = prompt('Anything to report from this patrol? (optional)\ne.g. Transtech & Tool Room locked and alarmed, rear barrier activated') || '';
     await stopCam();
-    await put('patrols', { ...p, status: 'Completed', endAt: now(), scanned: [...done], missed, explanation: explanation.trim() });
+    await put('patrols', { ...p, status: 'Completed', endAt: now(), scanned: [...done], missed, explanation: explanation.trim(), notes: notes.trim() });
     toast(missed.length ? 'Patrol saved with missed checkpoints.' : 'Patrol complete. Well done.'); guardHome();
   };
   draw();
@@ -230,7 +231,7 @@ async function live() {
     <div class="grid">${k('On shift now', on.length, `${late.length} late to start`, late.length ? '--warn' : '--ok')}${k('Patrols today', pats.filter((p) => p.status === 'Completed').length, `${missedPts} missed checkpoints`, missedPts ? '--bad' : '--acc')}${k('Open incidents', openInc.length, `${incs.length} in 7 days`, openInc.length ? '--bad' : '--ok')}${k('Welfare missed', missedNow.length, 'just now', missedNow.length ? '--bad' : '--ok')}${k('FM tasks open', openTasks.length, `${openTasks.filter((t) => t.dueAt && new Date(t.dueAt) < new Date()).length} overdue`, '--acc')}</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"><div class="card"><h2>On shift</h2>${on.length ? `<div class="list">${on.map((s) => `<div><span><b>${esc(n(s.guardId))}</b><br><span class="soft">${esc(sn(s.siteId))} · since ${tm(s.actualStart)}</span></span><span class="soft">ends ${tm(s.endAt)}</span></div>`).join('')}</div>` : '<p class="soft">Nobody on shift.</p>'}
       ${late.length ? `<h3 class="err" style="margin-top:8px">Late to start</h3><div class="list">${late.map((s) => `<div><span>${esc(n(s.guardId))} · ${esc(sn(s.siteId))}</span><span class="err">due ${tm(s.startAt)}</span></div>`).join('')}</div>` : ''}</div>
-    <div class="card"><h2>Today's patrols</h2>${pats.length ? `<div class="list">${pats.map((p) => `<div><span>${tm(p.startAt)} · <b>${esc(n(p.guardId))}</b><br><span class="soft">${esc(sn(p.siteId))}${p.explanation ? ' · ' + esc(p.explanation) : ''}</span></span>${p.status !== 'Completed' ? chip(p.status, '--warn') : (p.missed || []).length ? chip(`${p.missed.length} missed`, '--bad') : chip('Complete', '--ok')}</div>`).join('')}</div>` : '<p class="soft">No patrols yet today.</p>'}</div>
+    <div class="card"><h2>Today's patrols</h2>${pats.length ? `<div class="list">${pats.map((p) => `<div><span>${tm(p.startAt)} · <b>${esc(n(p.guardId))}</b><br><span class="soft">${esc(sn(p.siteId))}${p.explanation ? ' · ' + esc(p.explanation) : ''}${p.notes ? ' · ' + esc(p.notes) : ''}</span></span>${p.status !== 'Completed' ? chip(p.status, '--warn') : (p.missed || []).length ? chip(`${p.missed.length} missed`, '--bad') : chip('Complete', '--ok')}</div>`).join('')}</div>` : '<p class="soft">No patrols yet today.</p>'}</div>
     <div class="card"><h2>Open incidents</h2>${openInc.length ? `<div class="list">${openInc.slice(0, 10).map((i) => `<div><span>${chip(i.severity, SEV[i.severity] || '--soft')} <b>${esc(i.type)}</b><br><span class="soft">${esc(sn(i.siteId))} · ${esc(n(i.guardId))} · ${fmt(i.at)}</span></span></div>`).join('')}</div>` : '<p class="soft">None. 👏</p>'}</div></div>
     <p class="soft">Refreshes every 20 seconds.</p>`;
   $$('[data-sosr]').forEach((b) => (b.onclick = async () => { const s = sos.find((x) => x.id === b.dataset.sosr); await put('sosEvents', { ...s, status: 'Resolved', resolvedAt: now(), resolvedBy: S.prof.name }); toast('SOS marked resolved.'); live(); }));
@@ -255,8 +256,8 @@ async function patrolsTab() {
   const since = new Date(Date.now() - 7 * 864e5).toISOString();
   const [pats, sites, guards, cps] = await Promise.all([list('patrols', (q) => q.gte('data->>startAt', since)), list('sites'), list('guards'), list('checkpoints')]); const SM = byId(sites), GM = byId(guards), CM = byId(cps);
   const L = pats.sort((a, b) => b.startAt.localeCompare(a.startAt));
-  $('#m').innerHTML = `<div class="row"><h2 class="grow">Patrols · last 7 days</h2><button class="btn" id="px">Export CSV</button></div><div class="tw"><table><thead><tr><th>Start</th><th>End</th><th>Site</th><th>Guard</th><th>Scanned</th><th>Missed</th><th>Explanation</th></tr></thead><tbody>${L.map((p) => `<tr><td>${fmt(p.startAt)}</td><td>${tm(p.endAt)}</td><td>${esc(SM.get(p.siteId)?.name || '')}</td><td>${esc(GM.get(p.guardId)?.name || '')}</td><td>${(p.scanned || []).length}</td><td class="${(p.missed || []).length ? 'err' : ''}">${(p.missed || []).map((x) => esc(CM.get(x)?.name || x)).join(', ') || (p.status === 'Completed' ? '—' : esc(p.status))}</td><td>${esc(p.explanation || '')}</td></tr>`).join('') || '<tr><td colspan="7" class="soft">No patrols.</td></tr>'}</tbody></table></div>`;
-  $('#px').onclick = () => csv('patrols', L.map((p) => ({ Start: fmt(p.startAt), End: fmt(p.endAt), Site: SM.get(p.siteId)?.name || '', Guard: GM.get(p.guardId)?.name || '', Status: p.status, Scanned: (p.scanned || []).length, Missed: (p.missed || []).map((x) => CM.get(x)?.name || x).join('; '), Explanation: p.explanation || '' })));
+  $('#m').innerHTML = `<div class="row"><h2 class="grow">Patrols · last 7 days</h2><button class="btn" id="px">Export CSV</button></div><div class="tw"><table><thead><tr><th>Start</th><th>End</th><th>Site</th><th>Guard</th><th>Scanned</th><th>Missed</th><th>Explanation</th><th>Notes</th></tr></thead><tbody>${L.map((p) => `<tr><td>${fmt(p.startAt)}</td><td>${tm(p.endAt)}</td><td>${esc(SM.get(p.siteId)?.name || '')}</td><td>${esc(GM.get(p.guardId)?.name || '')}</td><td>${(p.scanned || []).length}</td><td class="${(p.missed || []).length ? 'err' : ''}">${(p.missed || []).map((x) => esc(CM.get(x)?.name || x)).join(', ') || (p.status === 'Completed' ? '—' : esc(p.status))}</td><td>${esc(p.explanation || '')}</td><td>${esc(p.notes || '')}</td></tr>`).join('') || '<tr><td colspan="8" class="soft">No patrols.</td></tr>'}</tbody></table></div>`;
+  $('#px').onclick = () => csv('patrols', L.map((p) => ({ Start: fmt(p.startAt), End: fmt(p.endAt), Site: SM.get(p.siteId)?.name || '', Guard: GM.get(p.guardId)?.name || '', Status: p.status, Scanned: (p.scanned || []).length, Missed: (p.missed || []).map((x) => CM.get(x)?.name || x).join('; '), Explanation: p.explanation || '', Notes: p.notes || '' })));
 }
 async function tasksTab() {
   const [tasks, sites, fms] = await Promise.all([list('tasks'), list('sites'), list('fms')]); const SM = byId(sites), FM = byId(fms);
@@ -289,15 +290,15 @@ async function sitesTab() {
   $('#m').innerHTML = `<div class="card"><h2>Add a site</h2><form id="sf" class="row"><label class="f grow">Site name<input name="name" required></label><label class="f grow">Address<input name="address"></label><label class="f">Welfare check every (min)<input name="w" type="number" min="15" max="240" value="${S.settings.welfareMinutes || 60}"></label><button class="btn pri">Add site</button></form></div>
     ${sites.sort((a, b) => a.name.localeCompare(b.name)).map((s) => { const mine = cps.filter((c) => c.siteId === s.id).sort((a, b) => (a.order || 0) - (b.order || 0));
       return `<div class="card" data-s="${s.id}"><div class="row" style="align-items:center"><div class="grow"><h2>${esc(s.name)}</h2><span class="soft">${esc(s.address || '')}</span></div><button class="btn sm" data-qr>Print QR codes</button><button class="btn sm" data-sdel>Remove site</button></div>
-        <div class="list">${mine.map((c) => `<div><span><b>${esc(c.order || '')}. ${esc(c.name)}</b> <span class="soft">${esc(c.code)}</span></span><button class="btn sm" data-cdel="${c.id}">Remove</button></div>`).join('') || '<p class="soft" style="margin:0">No checkpoints yet.</p>'}</div>
-        <div class="row"><input data-cn placeholder="New checkpoint, e.g. Rear fire exit" class="grow"><button class="btn sm pri" data-cadd>Add checkpoint</button></div></div>`; }).join('') || '<p class="soft">No sites yet.</p>'}`;
+        <div class="list">${mine.map((c) => `<div><span><b>${esc(c.order || '')}. ${esc(c.name)}</b> <span class="soft">${esc(String(c.code).slice(0, 40))}${c.oldSticker ? ' · old sticker' : ''}</span></span><button class="btn sm" data-cdel="${c.id}">Remove</button></div>`).join('') || '<p class="soft" style="margin:0">No checkpoints yet.</p>'}</div>
+        <div class="row"><input data-cn placeholder="New checkpoint, e.g. Rear fire exit" class="grow"><input data-cc placeholder="Old sticker code (optional)" style="max-width:260px"><button class="btn sm pri" data-cadd>Add checkpoint</button></div><p class="soft" style="margin:0">Reusing an old sticker? Scan it with the phone camera, copy the text it shows, and paste it into "Old sticker code".</p></div>`; }).join('') || '<p class="soft">No sites yet.</p>'}`;
   $('#sf').onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); await put('sites', { name: f.name.trim(), address: f.address.trim(), welfareMinutes: +f.w || 60 }); toast('Site added.'); sitesTab(); };
   $$('[data-s]').forEach((box) => { const sid = box.dataset.s, s = sites.find((x) => x.id === sid), mine = cps.filter((c) => c.siteId === sid);
-    $('[data-cadd]', box).onclick = async () => { const name = $('[data-cn]', box).value.trim(); if (!name) return; await put('checkpoints', { siteId: sid, name, code: code(), order: mine.length + 1 }); sitesTab(); };
+    $('[data-cadd]', box).onclick = async () => { const name = $('[data-cn]', box).value.trim(); if (!name) return; const old = $('[data-cc]', box).value.trim(); if (old && cps.some((c) => String(c.code).trim().toUpperCase() === old.toUpperCase())) return toast('That sticker code is already used by another checkpoint.', true); await put('checkpoints', { siteId: sid, name, code: old || code(), order: mine.length + 1, oldSticker: !!old }); sitesTab(); };
     $('[data-sdel]', box).onclick = async () => { if (!confirm(`Remove ${s.name}? History is kept.`)) return; await del('sites', sid); sitesTab(); };
     $$('[data-cdel]', box).forEach((b) => (b.onclick = async () => { if (!confirm('Remove this checkpoint?')) return; await del('checkpoints', b.dataset.cdel); sitesTab(); }));
     $('[data-qr]', box).onclick = () => { if (!mine.length) return toast('Add checkpoints first.', true); const w = window.open('', '_blank'); w.document.write(`<title>${esc(s.name)} checkpoints</title><style>body{font-family:system-ui;padding:20px}.g{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.g div{border:1px dashed #94A3B8;padding:16px;text-align:center;break-inside:avoid}h3{margin:8px 0 2px}</style><h2>${esc(s.name)} · patrol checkpoints</h2><div class="g">${mine.map((c, i) => `<div><div id="q${i}" style="display:inline-block"></div><h3>${esc(c.name)}</h3><div>Code: <b>${esc(c.code)}</b></div><small>SecureWatch · Crystal FM</small></div>`).join('')}</div>`); w.document.close();
-      const s2 = w.document.createElement('script'); s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s2.onload = () => { mine.forEach((c, i) => new w.QRCode(w.document.getElementById('q' + i), { text: 'SW:' + c.id, width: 180, height: 180 })); setTimeout(() => w.print(), 500); }; w.document.head.appendChild(s2); };
+      const s2 = w.document.createElement('script'); s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s2.onload = () => { mine.forEach((c, i) => new w.QRCode(w.document.getElementById('q' + i), { text: c.oldSticker ? c.code : 'SW:' + c.id, width: 180, height: 180 })); setTimeout(() => w.print(), 500); }; w.document.head.appendChild(s2); };
   });
 }
 async function people() {
