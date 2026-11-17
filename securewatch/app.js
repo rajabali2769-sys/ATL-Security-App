@@ -21,16 +21,16 @@ function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; }
 
 /* ---------- data: everything is a record (store, id, data) ---------- */
 async function list(store, q = (x) => x, limit = 2000) {
-  const { data, error } = await q(sb.from('sw_records').select('id,data,updated_at').eq('store', store).eq('deleted', false)).order('updated_at', { ascending: false }).limit(limit);
+  const { data, error } = await q(sb.from('records').select('id,data,updated_at').eq('store', store).eq('deleted', false)).order('updated_at', { ascending: false }).limit(limit);
   if (error) throw error; return data.map((r) => ({ id: r.id, ...r.data, _u: r.updated_at }));
 }
 async function put(store, obj) {
   const { id = uid(), _u, ...data } = obj;
   // existing item (came from the database) → update; new item → insert. FMs may only update their tasks.
-  const { error } = _u ? await sb.from('sw_records').update({ data, deleted: false }).eq('store', store).eq('id', id) : await sb.from('sw_records').upsert({ store, id, data, deleted: false });
+  const { error } = _u ? await sb.from('records').update({ data, deleted: false }).eq('store', store).eq('id', id) : await sb.from('records').upsert({ store, id, data, deleted: false });
   if (error) throw error; return { id, ...data, _u: _u || now() };
 }
-async function del(store, id) { const { error } = await sb.from('sw_records').update({ deleted: true }).eq('store', store).eq('id', id); if (error) throw error; }
+async function del(store, id) { const { error } = await sb.from('records').update({ deleted: true }).eq('store', store).eq('id', id); if (error) throw error; }
 const byId = (arr) => new Map(arr.map((x) => [x.id, x]));
 function csv(name, rows) { if (!rows.length) return toast('Nothing to export.', true); const cols = Object.keys(rows[0]); const out = [cols.join(','), ...rows.map((r) => cols.map((c) => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out], { type: 'text/csv' })); a.download = name + '.csv'; a.click(); }
 
@@ -50,7 +50,7 @@ async function boot() {
   return staffHome();
 }
 function login(msg = '') {
-  clearTimers();
+  clearTimers(); document.body.classList.remove('g');
   $('#app').innerHTML = `<div class="center"><form class="card login" id="lf"><div class="brand" style="color:var(--text)">${LOGO}<div>SecureWatch<small style="color:var(--soft)">Crystal Facilities Management</small></div></div>
     <h1>Sign in</h1><label class="f">Email<input name="email" type="email" autocomplete="username" required></label><label class="f">Password<input name="password" type="password" autocomplete="current-password" required></label>
     <p class="err" id="lm" role="alert">${esc(msg)}</p><button class="btn pri big">Sign in</button></form></div>`;
@@ -69,43 +69,85 @@ const bindOut = () => ($('#out').onclick = async () => { clearTimers(); await sb
 /* =====================================================================
    GUARD
    ===================================================================== */
+/* guard app: dark mobile layout with bottom tabs (Home · Patrol · Incident · More) */
+S.gtab = 'home';
+const gps = { acc: null, watch: null };
+function startGps() { if (gps.watch != null || !navigator.geolocation) return; gps.watch = navigator.geolocation.watchPosition((p) => { gps.acc = Math.round(p.coords.accuracy); const c = $('#gpsChip'); if (c) c.textContent = `GPS ±${gps.acc} m`; }, () => { const c = $('#gpsChip'); if (c) c.textContent = 'GPS off'; }, { enableHighAccuracy: true, maximumAge: 15000 }); }
+const dmy = (x) => new Date(x).toLocaleDateString('en-GB');
 async function guardHome() {
-  clearTimers();
+  clearTimers(); document.body.classList.add('g'); startGps();
   const me = S.prof.ref_id;
-  $('#app').innerHTML = topbar(S.prof.name) + `<main class="wrap" id="gmain"><div class="center" style="min-height:40vh"><div class="spin"></div></div></main>`; bindOut();
-  if (!me) { $('#gmain').innerHTML = `<div class="card"><h2>Your login isn't linked to a guard profile</h2><p class="muted">Ask your supervisor to link it in People.</p></div>`; return; }
-  const from = new Date(Date.now() - 16 * 36e5).toISOString(), to = new Date(Date.now() + 16 * 36e5).toISOString();
-  const [sites, shifts, welfare, patrols] = await Promise.all([list('sites'), list('shifts', (q) => q.gte('data->>endAt', from).lte('data->>startAt', to)), list('welfareChecks', (q) => q.eq('data->>status', 'Due')), list('patrols', (q) => q.gte('data->>startAt', dayStart()))]);
-  const SM = byId(sites), active = shifts.find((s) => s.actualStart && !s.actualEnd), next = shifts.filter((s) => !s.actualStart).sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
-  const due = welfare.filter((w) => w.shiftId === active?.id).sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
+  $('#app').innerHTML = `<header class="gbar"><div><b>${esc(S.prof.name.split(' ')[0])}</b><small id="gSite">SecureWatch</small></div><div class="gchips"><span class="gchip" id="gpsChip">${gps.acc ? `GPS ±${gps.acc} m` : 'GPS…'}</span><span class="gchip" id="netChip"><i></i>${navigator.onLine ? 'Online' : 'Offline'}</span></div></header>
+    <main class="gwrap" id="gmain"><div class="center" style="min-height:40vh"><div class="spin"></div></div></main>
+    <nav class="gnav">${[['home', 'Home', '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'], ['patrol', 'Patrol', '<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/>'], ['incident', 'Incident', '<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>'], ['more', 'More', '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>']].map(([k, l, ic]) => `<button data-g="${k}" class="${S.gtab === k ? 'on' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ic}</svg>${l}</button>`).join('')}</nav>`;
+  $$('[data-g]').forEach((b) => (b.onclick = () => { S.gtab = b.dataset.g; guardHome(); }));
+  const net = () => { const c = $('#netChip'); if (c) { c.innerHTML = `<i></i>${navigator.onLine ? 'Online' : 'Offline'}`; c.classList.toggle('off', !navigator.onLine); } };
+  window.onoffline = window.ononline = net; net();
   const g = $('#gmain');
-  if (!active) {
-    g.innerHTML = `<div class="card"><h1>Hello ${esc(S.prof.name.split(' ')[0])}</h1>${next ? `<p class="muted" style="margin:0">Your next shift: <b>${esc(SM.get(next.siteId)?.name || 'Site')}</b><br>${fmt(next.startAt)} – ${tm(next.endAt)}</p><button class="btn ok big" id="st">Start shift</button>` : `<p class="muted" style="margin:0">No shift on the rota for you right now.</p>`}</div>
-      <div class="card"><h2>Start an unplanned shift</h2><label class="f">Site<select id="us"><option value="">Choose site</option>${sites.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label><label class="f">Ends at<input type="time" id="ue" value="${new Date(Date.now() + 8 * 36e5).toTimeString().slice(0, 5)}"></label><button class="btn big" id="ust">Start unplanned shift</button></div>`;
-    if ($('#st')) $('#st').onclick = () => startShift(next);
-    $('#ust').onclick = async () => { const site = $('#us').value; if (!site) return toast('Choose a site.', true); const [h, m] = $('#ue').value.split(':').map(Number); const end = new Date(); end.setHours(h, m, 0, 0); if (end < new Date()) end.setDate(end.getDate() + 1);
-      const sh = await put('shifts', { guardId: me, siteId: site, startAt: now(), endAt: end.toISOString(), unplanned: true }); startShift(sh); };
+  if (!me) { g.innerHTML = `<div class="gcard"><h2>Your login isn't linked to a guard profile</h2><p class="gmuted">Ask your supervisor to link it in People.</p></div>`; return; }
+  const from = new Date(Date.now() - 16 * 36e5).toISOString(), to = new Date(Date.now() + 36 * 36e5).toISOString();
+  const [sites, shifts, welfare, patrols, incs] = await Promise.all([list('sites'), list('shifts', (q) => q.gte('data->>endAt', from).lte('data->>startAt', to)), list('welfareChecks', (q) => q.eq('data->>status', 'Due')), list('patrols', (q) => q.gte('data->>startAt', dayStart())), list('incidents', (q) => q.gte('data->>at', new Date(Date.now() - 7 * 864e5).toISOString()))]);
+  const SM = byId(sites), active = shifts.find((s) => s.actualStart && !s.actualEnd);
+  const next = shifts.filter((s) => !s.actualStart && new Date(s.endAt) > new Date()).sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
+  const cur = active || next, site = cur ? SM.get(cur.siteId) : null;
+  if (site) $('#gSite').textContent = site.name;
+  const due = active ? welfare.filter((w) => w.shiftId === active.id).sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0] : null;
+  const locked = (what) => `<div class="gcard"><h2>${what}</h2><div class="ginfo">Patrols, checkpoint scans and incident reports unlock once the shift has started.</div><button class="gbtn" data-go-home>Go to shift</button></div>`;
+  const bindHome = () => $$('[data-go-home]').forEach((b) => (b.onclick = () => { S.gtab = 'home'; guardHome(); }));
+
+  if (S.gtab === 'home') {
+    if (!cur) { g.innerHTML = `<div class="gcard"><div class="gk">Hello</div><h1>${esc(S.prof.name)}</h1><p class="gmuted">No shift on the rota for you in the next day and a half.</p></div>
+      <div class="gcard"><h2>Start an unplanned shift</h2><label class="gf">Site<select id="us"><option value="">Choose site</option>${sites.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label><label class="gf">Ends at<input type="time" id="ue" value="${new Date(Date.now() + 8 * 36e5).toTimeString().slice(0, 5)}"></label><button class="gbtn pri" id="ust">Start unplanned shift</button></div>`;
+      $('#ust').onclick = async () => { const sid = $('#us').value; if (!sid) return toast('Choose a site.', true); const [h, m] = $('#ue').value.split(':').map(Number); const end = new Date(); end.setHours(h, m, 0, 0); if (end < new Date()) end.setDate(end.getDate() + 1); startShift(await put('shifts', { guardId: me, siteId: sid, startAt: now(), endAt: end.toISOString(), unplanned: true })); };
+      return; }
+    const openFrom = new Date(new Date(cur.startAt).getTime() - 60 * 60000), canStart = !active && new Date() >= openFrom;
+    const status = active ? ['On shift', 'ok'] : canStart ? ['Ready', 'warn'] : ['Not started', 'idle'];
+    const overdue = due && new Date(due.dueAt) < new Date();
+    g.innerHTML = `<section class="gcard">
+        <div class="grow2"><div><div class="gk">Site</div><div class="gsite">${esc(site?.name || 'Site')}</div></div><span class="gpill ${status[1]}">${status[0]}</span></div>
+        <div class="ggrid"><div><div class="gk">Guard</div><div class="gv">${esc(S.prof.name)}</div></div><div><div class="gk">Now</div><div class="gv mono" id="gclock">${new Date().toLocaleTimeString('en-GB')}</div></div>
+        <div><div class="gk">Shift start</div><div class="gv">${tm(cur.startAt)}</div><div class="gd">${dmy(cur.startAt)}</div></div><div><div class="gk">Shift end</div><div class="gv">${tm(cur.endAt)}</div><div class="gd">${dmy(cur.endAt)}</div></div></div>
+        ${active ? `<div class="gd" style="margin-top:4px">Started at ${tm(active.actualStart)}</div>` : ''}</section>
+      ${active ? `<button class="gsos" id="sos">SOS · I need help</button>
+        <section class="gcard ${overdue ? 'galert' : ''}"><div class="grow2"><div><div class="gk">Welfare check</div><div class="gv">${due ? (overdue ? `<span class="gbad">Overdue since ${tm(due.dueAt)}</span>` : `Next at ${tm(due.dueAt)}`) : 'No check due'}</div></div></div><button class="gbtn ok" id="wok">I'm OK</button></section>
+        <button class="gbtn" id="end">End shift</button>`
+      : `<button class="gbtn big ${canStart ? 'ok' : ''}" id="st" ${canStart ? '' : 'disabled'}>START SHIFT</button>
+        ${canStart ? '' : `<p class="gcenter gmuted">You can start this shift from ${tm(openFrom)} on ${dmy(openFrom)}.</p>`}
+        <div class="ginfo">Patrols, checkpoint scans and incident reports unlock once the shift has started.</div>`}
+      <button class="gbtn" id="instr">VIEW SITE INSTRUCTIONS</button>`;
+    S.timers.push(setInterval(() => { const c = $('#gclock'); if (c) c.textContent = new Date().toLocaleTimeString('en-GB'); if (!active && !canStart && new Date() >= openFrom) guardHome(); if (overdue === false && due && new Date(due.dueAt) < new Date()) guardHome(); }, 1000));
+    if ($('#st')) $('#st').onclick = () => startShift(cur);
+    if ($('#sos')) $('#sos').onclick = () => sos(active);
+    if ($('#wok')) $('#wok').onclick = () => welfareOk(active, due);
+    if ($('#end')) $('#end').onclick = async () => { if (!confirm('End your shift now?')) return; await put('shifts', { ...active, actualEnd: now() }); for (const w of welfare.filter((x) => x.shiftId === active.id)) await put('welfareChecks', { ...w, status: 'Cancelled' }); toast('Shift ended. Thank you.'); guardHome(); };
+    $('#instr').onclick = () => modal(`<h2>${esc(site?.name || 'Site')} · instructions</h2><div style="white-space:pre-line">${esc(site?.instructions || 'No instructions added yet. Your supervisor can add them in Sites & checkpoints.')}</div>${site?.address ? `<p class="soft">${esc(site.address)}</p>` : ''}<button class="btn pri" onclick="closeModal()">Close</button>`);
     return;
   }
-  const site = SM.get(active.siteId), overdue = due && new Date(due.dueAt) < new Date();
-  g.innerHTML = `<div class="card"><div class="row" style="align-items:center"><div class="grow"><h1>${esc(site?.name || 'On shift')}</h1><p class="soft" style="margin:0">On shift since ${tm(active.actualStart)} · ends ${tm(active.endAt)}</p></div>${chip('On shift', '--ok')}</div></div>
-    <button class="btn sos" id="sos">SOS – I need help</button>
-    <div class="card ${overdue ? 'alert' : ''}"><h2>Welfare check</h2><p style="margin:0">${due ? (overdue ? `<b class="err">Overdue since ${tm(due.dueAt)}</b>` : `Next check at <b>${tm(due.dueAt)}</b>`) : 'No check due.'}</p><button class="btn ok big" id="wok">I'm OK</button></div>
-    <div class="grid"><button class="btn pri big" id="pat">Start patrol</button><button class="btn big" id="inc">Report incident</button></div>
-    <div class="card"><h2>Today's patrols</h2>${patrols.length ? `<div class="list">${patrols.map((p) => `<div><span>${tm(p.startAt)} · ${esc(p.area || SM.get(p.siteId)?.name || '')}</span>${(p.missed || []).length ? chip(`${p.missed.length} missed`, '--bad') : chip(p.status || 'Done', '--ok')}</div>`).join('')}</div>` : '<p class="soft" style="margin:0">None yet.</p>'}</div>
-    <button class="btn big" id="end">End shift</button>`;
-  $('#sos').onclick = () => sos(active);
-  $('#wok').onclick = () => welfareOk(active, due);
-  $('#pat').onclick = () => patrol(active, site);
-  $('#inc').onclick = () => incidentForm(active);
-  $('#end').onclick = async () => { if (!confirm('End your shift now?')) return; await put('shifts', { ...active, actualEnd: now() }); const open = welfare.filter((w) => w.shiftId === active.id); for (const w of open) await put('welfareChecks', { ...w, status: 'Cancelled' }); toast('Shift ended. Thank you.'); guardHome(); };
-  S.timers.push(setInterval(() => { if (due && new Date(due.dueAt) < new Date() && !$('.alert')) guardHome(); }, 30000));
+  if (S.gtab === 'patrol') {
+    if (!active) { g.innerHTML = locked('Patrol'); bindHome(); return; }
+    g.innerHTML = `<section class="gcard"><div class="gk">Site</div><div class="gsite">${esc(site?.name || '')}</div><button class="gbtn pri big" id="pat">START PATROL</button></section>
+      <section class="gcard"><h2>Today's patrols</h2>${patrols.length ? patrols.map((p) => `<div class="glist"><span>${tm(p.startAt)} · ${esc(p.area || site?.name || '')}</span><span class="gpill ${p.status !== 'Completed' ? 'warn' : (p.missed || []).length ? 'bad' : 'ok'}">${p.status !== 'Completed' ? esc(p.status) : (p.missed || []).length ? p.missed.length + ' missed' : 'Complete'}</span></div>`).join('') : '<p class="gmuted">None yet today.</p>'}</section>`;
+    $('#pat').onclick = () => patrol(active, site);
+    return;
+  }
+  if (S.gtab === 'incident') {
+    if (!active) { g.innerHTML = locked('Incident'); bindHome(); return; }
+    g.innerHTML = `<button class="gbtn pri big" id="inc">REPORT AN INCIDENT</button><section class="gcard"><h2>My reports (7 days)</h2>${incs.length ? incs.sort((a, b) => b.at.localeCompare(a.at)).map((i) => `<div class="glist"><span>${esc(i.type)}<br><span class="gd">${fmt(i.at)}</span></span><span class="gpill ${i.status === 'Open' ? 'bad' : 'ok'}">${esc(i.status)}</span></div>`).join('') : '<p class="gmuted">No reports this week.</p>'}</section>`;
+    $('#inc').onclick = () => incidentForm(active);
+    return;
+  }
+  g.innerHTML = `<section class="gcard"><div class="gk">Signed in as</div><div class="gsite">${esc(S.prof.name)}</div><div class="gd">${esc(S.prof.email || '')}</div></section>
+    <button class="gbtn" id="instr2">Site instructions</button><button class="gbtn" id="pw">Change password</button><button class="gbtn" id="out">Sign out</button>
+    <p class="gcenter gd">SecureWatch · Crystal Facilities Management</p>`;
+  $('#instr2').onclick = () => modal(`<h2>${esc(site?.name || 'Site')} · instructions</h2><div style="white-space:pre-line">${esc(site?.instructions || 'No instructions added yet.')}</div><button class="btn pri" onclick="closeModal()">Close</button>`);
+  $('#pw').onclick = setPassword;
+  $('#out').onclick = async () => { clearTimers(); document.body.classList.remove('g'); await sb.auth.signOut(); login(); };
 }
 async function startShift(sh) {
   const mins = +(S.settings.welfareMinutes || 60), loc = await where();
   const s = await put('shifts', { ...sh, actualStart: now(), startLat: loc?.lat ?? null, startLng: loc?.lng ?? null });
   await put('welfareChecks', { guardId: S.prof.ref_id, siteId: s.siteId, shiftId: s.id, dueAt: new Date(Date.now() + mins * 60000).toISOString(), status: 'Due' });
-  toast('Shift started. Stay safe.'); guardHome();
+  toast('Shift started. Stay safe.'); S.gtab = 'home'; guardHome();
 }
 async function welfareOk(sh, due) {
   const mins = +(S.settings.welfareMinutes || 60);
@@ -135,10 +177,10 @@ async function patrol(sh, site) {
   const p = await put('patrols', { guardId: S.prof.ref_id, siteId: sh.siteId, shiftId: sh.id, area: area || null, startAt: now(), status: 'In progress', scanned: [], missed: [] });
   const done = new Set(); let qr = null;
   const draw = () => {
-    $('#gmain').innerHTML = `<div class="card"><h1>Patrol · ${esc(area || site?.name || '')}</h1><p class="soft" style="margin:0">${done.size} of ${cps.length} checkpoints · started ${tm(p.startAt)}</p></div>
-      <div class="card"><div id="reader"></div><div class="row"><button class="btn pri grow" id="scan">${qr ? 'Stop camera' : 'Scan checkpoint'}</button></div><div class="row"><input id="code" placeholder="Or type the checkpoint code" autocomplete="off" class="grow"><button class="btn" id="add">Add</button></div></div>
-      <div class="card"><div style="display:flex;flex-direction:column;gap:8px">${cps.map((c) => `<div class="cp ${done.has(c.id) ? 'done' : ''}"><span class="dot">${done.has(c.id) ? '✓' : ''}</span><div class="grow"><b>${esc(c.name)}</b><div class="soft">${esc(c.code)}</div></div></div>`).join('')}</div></div>
-      <button class="btn ok big" id="fin">Finish patrol</button><button class="btn big" id="can">Cancel</button>`;
+    $('#gmain').innerHTML = `<div class="gcard"><h1>Patrol · ${esc(area || site?.name || '')}</h1><p class="gmuted" style="margin:0">${done.size} of ${cps.length} checkpoints · started ${tm(p.startAt)}</p></div>
+      <div class="gcard"><div id="reader"></div><div class="row"><button class="btn pri grow" id="scan">${qr ? 'Stop camera' : 'Scan checkpoint'}</button></div><div class="row"><input id="code" placeholder="Or type the checkpoint code" autocomplete="off" class="grow"><button class="btn" id="add">Add</button></div></div>
+      <div class="gcard"><div style="display:flex;flex-direction:column;gap:8px">${cps.map((c) => `<div class="cp ${done.has(c.id) ? 'done' : ''}"><span class="dot">${done.has(c.id) ? '✓' : ''}</span><div class="grow"><b>${esc(c.name)}</b><div class="soft">${esc(c.code)}</div></div></div>`).join('')}</div></div>
+      <button class="gbtn ok big" id="fin">FINISH PATROL</button><button class="gbtn" id="can">Cancel patrol</button>`;
     $('#scan').onclick = toggleCam; $('#add').onclick = () => hit($('#code').value); $('#code').onkeydown = (e) => { if (e.key === 'Enter') hit(e.target.value); };
     $('#fin').onclick = finish; $('#can').onclick = async () => { if (!confirm('Cancel this patrol?')) return; await stopCam(); await put('patrols', { ...p, status: 'Cancelled', endAt: now() }); guardHome(); };
   };
@@ -166,7 +208,7 @@ async function patrol(sh, site) {
     const notes = prompt('Anything to report from this patrol? (optional)\ne.g. Transtech & Tool Room locked and alarmed, rear barrier activated') || '';
     await stopCam();
     await put('patrols', { ...p, status: 'Completed', endAt: now(), scanned: [...done], missed, explanation: explanation.trim(), notes: notes.trim() });
-    toast(missed.length ? 'Patrol saved with missed checkpoints.' : 'Patrol complete. Well done.'); guardHome();
+    toast(missed.length ? 'Patrol saved with missed checkpoints.' : 'Patrol complete. Well done.'); S.gtab = 'patrol'; guardHome();
   };
   draw();
 }
@@ -180,7 +222,7 @@ function incidentForm(sh) {
   $('#if').onsubmit = async (e) => { e.preventDefault(); const b = e.target.querySelector('.pri'); b.disabled = true; const fd = new FormData(e.target), f = fd.get('photo');
     let photoPath = null;
     try {
-      if (f && f.size) { if (f.size > 10 * 1024 * 1024) throw new Error('Photo is over 10 MB.'); photoPath = `${S.prof.ref_id}/${Date.now()}-${(f.name || 'photo.jpg').replace(/[^\w.\-]+/g, '_')}`; const { error } = await sb.storage.from('sw-evidence').upload(photoPath, f, { contentType: f.type }); if (error) throw error; }
+      if (f && f.size) { if (f.size > 10 * 1024 * 1024) throw new Error('Photo is over 10 MB.'); photoPath = `${S.prof.ref_id}/${Date.now()}-${(f.name || 'photo.jpg').replace(/[^\w.\-]+/g, '_')}`; const { error } = await sb.storage.from('evidence').upload(photoPath, f, { contentType: f.type }); if (error) throw error; }
       const loc = await where();
       await put('incidents', { guardId: S.prof.ref_id, siteId: sh.siteId, shiftId: sh.id, at: now(), type: fd.get('type'), severity: fd.get('severity'), description: String(fd.get('description')).slice(0, 4000), status: 'Open', photoPath, lat: loc?.lat ?? null, lng: loc?.lng ?? null });
       closeModal(); toast('Incident reported. Your supervisor can see it now.');
@@ -253,7 +295,7 @@ async function incidents() {
     $('#fi').onchange = (e) => { f = e.target.value; draw(); };
     $('#ix').onclick = () => csv('incidents', L.map((i) => ({ When: fmt(i.at), Site: SM.get(i.siteId)?.name || '', Guard: GM.get(i.guardId)?.name || '', Type: i.type, Severity: i.severity, Status: i.status, Description: i.description, Notes: i.notes || '' })));
     $$('[data-i]').forEach((b) => (b.onclick = async () => { const i = incs.find((x) => x.id === b.dataset.i); let img = '';
-      if (i.photoPath) { const { data } = await sb.storage.from('sw-evidence').createSignedUrl(i.photoPath, 300); if (data) img = `<img src="${data.signedUrl}" alt="Incident photo" style="max-width:100%;border-radius:10px">`; }
+      if (i.photoPath) { const { data } = await sb.storage.from('evidence').createSignedUrl(i.photoPath, 300); if (data) img = `<img src="${data.signedUrl}" alt="Incident photo" style="max-width:100%;border-radius:10px">`; }
       modal(`<h2>${esc(i.type)} · ${chip(i.severity, SEV[i.severity] || '--soft')}</h2><p class="soft" style="margin:0">${esc(SM.get(i.siteId)?.name || '')} · ${esc(GM.get(i.guardId)?.name || '')} · ${fmt(i.at)}${i.lat ? ` · <a target="_blank" rel="noopener" href="https://www.google.com/maps?q=${i.lat},${i.lng}">location</a>` : ''}</p><p style="white-space:pre-line">${esc(i.description)}</p>${img}${i.notes ? `<p class="soft" style="white-space:pre-line">${esc(i.notes)}</p>` : ''}
         <label class="f">Status<select id="is">${['Open', 'Investigating', 'Resolved', 'Closed'].map((s) => `<option ${i.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="f">Add a note<textarea id="in" placeholder="Action taken, client informed, police ref…"></textarea></label>
         <div class="row"><button class="btn grow" onclick="closeModal()">Close</button><button class="btn pri grow" id="isv">Save</button></div>`);
@@ -297,12 +339,13 @@ async function sitesTab() {
   const code = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[b % 31]).join('');
   $('#m').innerHTML = `<div class="card"><h2>Add a site</h2><form id="sf" class="row"><label class="f grow">Site name<input name="name" required></label><label class="f grow">Address<input name="address"></label><label class="f">Welfare check every (min)<input name="w" type="number" min="15" max="240" value="${S.settings.welfareMinutes || 60}"></label><button class="btn pri">Add site</button></form></div>
     ${sites.sort((a, b) => a.name.localeCompare(b.name)).map((s) => { const mine = cps.filter((c) => c.siteId === s.id).sort((a, b) => (a.order || 0) - (b.order || 0));
-      return `<div class="card" data-s="${s.id}"><div class="row" style="align-items:center"><div class="grow"><h2>${esc(s.name)}</h2><span class="soft">${esc(s.address || '')}</span></div><button class="btn sm" data-qr>Print QR codes</button><button class="btn sm" data-sdel>Remove site</button></div>
+      return `<div class="card" data-s="${s.id}"><div class="row" style="align-items:center"><div class="grow"><h2>${esc(s.name)}</h2><span class="soft">${esc(s.address || '')}</span></div><button class="btn sm" data-ins>Guard instructions</button><button class="btn sm" data-qr>Print QR codes</button><button class="btn sm" data-sdel>Remove site</button></div>
         <div class="list">${mine.map((c) => `<div><span><b>${esc(c.order || '')}. ${esc(c.name)}</b>${c.area ? ` ${chip(c.area, '--acc')}` : ''} <span class="soft">${esc(String(c.code).slice(0, 40))}${c.oldSticker ? ' · old sticker' : ''}</span></span><button class="btn sm" data-cdel="${c.id}">Remove</button></div>`).join('') || '<p class="soft" style="margin:0">No checkpoints yet.</p>'}</div>
         <div class="row"><input data-cn placeholder="New checkpoint, e.g. Rear fire exit" class="grow"><input data-ca placeholder="Building (optional)" style="max-width:180px"><input data-cc placeholder="Old sticker code (optional)" style="max-width:260px"><button class="btn sm pri" data-cadd>Add checkpoint</button></div><p class="soft" style="margin:0">Reusing an old sticker? Scan it with the phone camera, copy the text it shows, and paste it into "Old sticker code".</p></div>`; }).join('') || '<p class="soft">No sites yet.</p>'}`;
   $('#sf').onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); await put('sites', { name: f.name.trim(), address: f.address.trim(), welfareMinutes: +f.w || 60 }); toast('Site added.'); sitesTab(); };
   $$('[data-s]').forEach((box) => { const sid = box.dataset.s, s = sites.find((x) => x.id === sid), mine = cps.filter((c) => c.siteId === sid);
     $('[data-cadd]', box).onclick = async () => { const name = $('[data-cn]', box).value.trim(); if (!name) return; const old = $('[data-cc]', box).value.trim(); if (old && cps.some((c) => String(c.code).trim().toUpperCase() === old.toUpperCase())) return toast('That sticker code is already used by another checkpoint.', true); await put('checkpoints', { siteId: sid, name, code: old || code(), order: mine.length + 1, oldSticker: !!old, area: $('[data-ca]', box).value.trim() || null }); sitesTab(); };
+    $('[data-ins]', box).onclick = () => { modal(`<h2>Instructions for guards · ${esc(s.name)}</h2><p class="soft" style="margin:0">Shown on the guard's phone under "View site instructions".</p><textarea id="insT" style="min-height:220px">${esc(s.instructions || '')}</textarea><div class="row"><button class="btn grow" onclick="closeModal()">Cancel</button><button class="btn pri grow" id="insS">Save</button></div>`); $('#insS').onclick = async () => { await put('sites', { ...s, instructions: $('#insT').value }); closeModal(); toast('Instructions saved.'); sitesTab(); }; };
     $('[data-sdel]', box).onclick = async () => { if (!confirm(`Remove ${s.name}? History is kept.`)) return; await del('sites', sid); sitesTab(); };
     $$('[data-cdel]', box).forEach((b) => (b.onclick = async () => { if (!confirm('Remove this checkpoint?')) return; await del('checkpoints', b.dataset.cdel); sitesTab(); }));
     $('[data-qr]', box).onclick = () => { if (!mine.length) return toast('Add checkpoints first.', true); const w = window.open('', '_blank'); w.document.write(`<title>${esc(s.name)} checkpoints</title><style>body{font-family:system-ui;padding:20px}.g{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.g div{border:1px dashed #94A3B8;padding:16px;text-align:center;break-inside:avoid}h3{margin:8px 0 2px}</style><h2>${esc(s.name)} · patrol checkpoints</h2><div class="g">${mine.map((c, i) => `<div><div id="q${i}" style="display:inline-block"></div><h3>${esc(c.name)}</h3><div>Code: <b>${esc(c.code)}</b></div><small>SecureWatch · Crystal FM</small></div>`).join('')}</div>`); w.document.close();
