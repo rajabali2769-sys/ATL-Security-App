@@ -21,16 +21,16 @@ function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; }
 
 /* ---------- data: everything is a record (store, id, data) ---------- */
 async function list(store, q = (x) => x, limit = 2000) {
-  const { data, error } = await q(sb.from('records').select('id,data,updated_at').eq('store', store).eq('deleted', false)).order('updated_at', { ascending: false }).limit(limit);
+  const { data, error } = await q(sb.from('sw_records').select('id,data,updated_at').eq('store', store).eq('deleted', false)).order('updated_at', { ascending: false }).limit(limit);
   if (error) throw error; return data.map((r) => ({ id: r.id, ...r.data, _u: r.updated_at }));
 }
 async function put(store, obj) {
   const { id = uid(), _u, ...data } = obj;
   // existing item (came from the database) → update; new item → insert. FMs may only update their tasks.
-  const { error } = _u ? await sb.from('records').update({ data, deleted: false }).eq('store', store).eq('id', id) : await sb.from('records').upsert({ store, id, data, deleted: false });
+  const { error } = _u ? await sb.from('sw_records').update({ data, deleted: false }).eq('store', store).eq('id', id) : await sb.from('sw_records').upsert({ store, id, data, deleted: false });
   if (error) throw error; return { id, ...data, _u: _u || now() };
 }
-async function del(store, id) { const { error } = await sb.from('records').update({ deleted: true }).eq('store', store).eq('id', id); if (error) throw error; }
+async function del(store, id) { const { error } = await sb.from('sw_records').update({ deleted: true }).eq('store', store).eq('id', id); if (error) throw error; }
 const byId = (arr) => new Map(arr.map((x) => [x.id, x]));
 function csv(name, rows) { if (!rows.length) return toast('Nothing to export.', true); const cols = Object.keys(rows[0]); const out = [cols.join(','), ...rows.map((r) => cols.map((c) => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out], { type: 'text/csv' })); a.download = name + '.csv'; a.click(); }
 
@@ -222,7 +222,7 @@ function incidentForm(sh) {
   $('#if').onsubmit = async (e) => { e.preventDefault(); const b = e.target.querySelector('.pri'); b.disabled = true; const fd = new FormData(e.target), f = fd.get('photo');
     let photoPath = null;
     try {
-      if (f && f.size) { if (f.size > 10 * 1024 * 1024) throw new Error('Photo is over 10 MB.'); photoPath = `${S.prof.ref_id}/${Date.now()}-${(f.name || 'photo.jpg').replace(/[^\w.\-]+/g, '_')}`; const { error } = await sb.storage.from('evidence').upload(photoPath, f, { contentType: f.type }); if (error) throw error; }
+      if (f && f.size) { if (f.size > 10 * 1024 * 1024) throw new Error('Photo is over 10 MB.'); photoPath = `${S.prof.ref_id}/${Date.now()}-${(f.name || 'photo.jpg').replace(/[^\w.\-]+/g, '_')}`; const { error } = await sb.storage.from('sw-evidence').upload(photoPath, f, { contentType: f.type }); if (error) throw error; }
       const loc = await where();
       await put('incidents', { guardId: S.prof.ref_id, siteId: sh.siteId, shiftId: sh.id, at: now(), type: fd.get('type'), severity: fd.get('severity'), description: String(fd.get('description')).slice(0, 4000), status: 'Open', photoPath, lat: loc?.lat ?? null, lng: loc?.lng ?? null });
       closeModal(); toast('Incident reported. Your supervisor can see it now.');
@@ -295,7 +295,7 @@ async function incidents() {
     $('#fi').onchange = (e) => { f = e.target.value; draw(); };
     $('#ix').onclick = () => csv('incidents', L.map((i) => ({ When: fmt(i.at), Site: SM.get(i.siteId)?.name || '', Guard: GM.get(i.guardId)?.name || '', Type: i.type, Severity: i.severity, Status: i.status, Description: i.description, Notes: i.notes || '' })));
     $$('[data-i]').forEach((b) => (b.onclick = async () => { const i = incs.find((x) => x.id === b.dataset.i); let img = '';
-      if (i.photoPath) { const { data } = await sb.storage.from('evidence').createSignedUrl(i.photoPath, 300); if (data) img = `<img src="${data.signedUrl}" alt="Incident photo" style="max-width:100%;border-radius:10px">`; }
+      if (i.photoPath) { const { data } = await sb.storage.from('sw-evidence').createSignedUrl(i.photoPath, 300); if (data) img = `<img src="${data.signedUrl}" alt="Incident photo" style="max-width:100%;border-radius:10px">`; }
       modal(`<h2>${esc(i.type)} · ${chip(i.severity, SEV[i.severity] || '--soft')}</h2><p class="soft" style="margin:0">${esc(SM.get(i.siteId)?.name || '')} · ${esc(GM.get(i.guardId)?.name || '')} · ${fmt(i.at)}${i.lat ? ` · <a target="_blank" rel="noopener" href="https://www.google.com/maps?q=${i.lat},${i.lng}">location</a>` : ''}</p><p style="white-space:pre-line">${esc(i.description)}</p>${img}${i.notes ? `<p class="soft" style="white-space:pre-line">${esc(i.notes)}</p>` : ''}
         <label class="f">Status<select id="is">${['Open', 'Investigating', 'Resolved', 'Closed'].map((s) => `<option ${i.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="f">Add a note<textarea id="in" placeholder="Action taken, client informed, police ref…"></textarea></label>
         <div class="row"><button class="btn grow" onclick="closeModal()">Close</button><button class="btn pri grow" id="isv">Save</button></div>`);
